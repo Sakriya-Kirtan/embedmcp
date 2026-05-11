@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "embedmcp": {
+      "command": "python",
+      "args": ["server.py"],
+      "cwd": "D:\\embedmcp"
+    }
+  }
+}
