@@ -176,22 +176,33 @@ function renderResults(data, query) {
     return;
   }
   
-  const { stack_results, github_results, vendor_tip, counts } = data;
-  const total = (stack_results?.length || 0) + (github_results?.length || 0);
-  
+  const { stack_results, github_results, reddit_results, vendor_tip, counts } = data;
+
+  const total =
+    (stack_results?.length || 0) +
+    (github_results?.length || 0) +
+    (reddit_results?.length || 0);
+
+
   if (total === 0 && !vendor_tip) {
     results.innerHTML = '<div class="empty">No results found — try different keywords.</div>';
     return;
   }
   
   let html = '';
+
+
+
   
   // Summary
   html += `<div class="results-header">
-    <strong>${total} results</strong> for "${query}" — 
-    SO: ${counts?.stackoverflow || 0} · EE: ${counts?.electronics || 0} · GitHub: ${counts?.github || 0}
+    <strong>${total} results</strong> for "${query}" —
+    SO: ${counts?.stackoverflow || 0}
+    · EE: ${counts?.electronics || 0}
+    · GitHub: ${counts?.github || 0}
+    · Reddit: ${counts?.reddit || 0}
   </div>`;
-  
+
   // Vendor tip
   if (vendor_tip) {
     html += `<div class="vendor-tip">
@@ -242,9 +253,24 @@ function renderResults(data, query) {
       </div>`;
     }
   }
+    // Reddit results
+  if (data.reddit_results?.length) {
+    html += '<div class="section-title">Reddit</div>';
+    for (const r of data.reddit_results) {
+      html += `<div class="result-card">
+        <a href="${r.link}" target="_blank">${r.title}</a>
+        <div class="result-meta">
+          <span class="badge badge-gh">r/${r.subreddit}</span>
+          <span class="score">⬆ ${r.upvotes} · 💬 ${r.comments}</span>
+        </div>
+        ${r.body_preview ? `<div class="answer-preview">${r.body_preview.substring(0,200)}...</div>` : ''}
+      </div>`;
+    }
+  }
   
   // Vendor KB links
-  const kb_results = (stack_results || []).filter(r => r.site === 'vendor_kb');
+  //const kb_results = (stack_results || []).filter(r => r.site === 'vendor_kb');
+  const kb_results = data.kb_results || [];
   if (kb_results.length) {
     html += '<div class="section-title">Vendor Knowledge Base</div>';
     for (const r of kb_results) {
@@ -275,23 +301,23 @@ def search():
         # search_all_sites already includes GitHub internally
         # DO NOT call search_github_issues separately — that was causing double search
         results, vendor_tip, site_counts = search_all_sites(query)
-        
-        # Split results by type for the frontend
         se_results  = [r for r in results if r.get("site") in ("stackoverflow", "electronics")]
         gh_results  = [r for r in results if r.get("site") == "github"]
         kb_results  = [r for r in results if r.get("site") == "vendor_kb"]
-        
+        rd_results  = [r for r in results if r.get("site") == "reddit"]
+
         return jsonify({
-            "stack_results": se_results,
-            "github_results": gh_results,
-            "kb_results": kb_results,
-            "vendor_tip": vendor_tip,
-            "counts": site_counts
+          "stack_results": se_results,
+          "github_results": gh_results,
+          "kb_results": kb_results,
+          "reddit_results": rd_results,
+          "vendor_tip": vendor_tip,
+          "counts": site_counts
         })
-        
     except Exception as e:
         print(f"Search error: {e}", file=__import__('sys').stderr)
         return jsonify({"error": str(e)}), 500
+
 
 
 if __name__ == "__main__":

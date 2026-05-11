@@ -103,6 +103,18 @@ async def call_tool(name: str, arguments: dict) -> list[types.TextContent]:
             if r.get("body_preview"):
                 output += f"   Preview: {r['body_preview'][:300]}\n"
             output += "\n"
+    # Reddit posts
+    reddit_results = [r for r in results if r.get("site") == "reddit"]
+    if reddit_results:
+        output += "── REDDIT ──\n\n"
+        for i, r in enumerate(reddit_results, 1):
+            output += f"{i}. [r/{r.get('subreddit','embedded')}] {r['title']}\n"
+            output += f"   ⬆ {r.get('upvotes',0)} upvotes | 💬 {r.get('comments',0)} comments\n"
+            output += f"   URL: {r['link']}\n"
+            if r.get("body_preview"):
+                output += f"   Preview: {r['body_preview'][:200]}\n"
+            output += "\n"
+            
     
     # Vendor KB links
     if kb_results:

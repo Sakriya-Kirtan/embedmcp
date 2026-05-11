@@ -278,41 +278,28 @@ def search_all_sites(query):
 
     # Search vendor KB if vendor is detected
 
-    # Search vendor KB — only for the SPECIFIC product/alias detected in query
     vendor_kb_results = []
     if vendor and vendor.get("community_url"):
-    
-        # Figure out which specific keyword matched the query
-        # Instead of dumping ALL products, we find the exact one that matched
-        matched_keyword = None
-        for keyword in vendor.get("products", []) + vendor.get("aliases", []):
-            if clean(keyword) in cleaned_query:
-                matched_keyword = keyword
-                break
-
         matched_keyword = None
         all_keywords_sorted = sorted(
             vendor.get("products", []) + vendor.get("aliases", []),
-            key=len, reverse=True   # longest first — rzg3e before rzg
+            key=len, reverse=True
         )
         for keyword in all_keywords_sorted:
             if clean(keyword) in cleaned_query:
                 matched_keyword = keyword
                 break
-    
+
         if matched_keyword:
             print(f"  Detected vendor keyword: '{matched_keyword}' → searching {vendor['name']} KB", file=sys.stderr)
-        
-            # Search with the matched keyword + original context
-            # e.g. "rzg3e camera interface" not just "rzg3e"
-            # This gives much more relevant KB results
-            # Use original query directly — most specific and natural
-            kb_results = search_vendor_kb(original_query.strip(), vendor["community_url"])
-            vendor_kb_results.extend(kb_results)
-        
-            # Also one URL for just the bare keyword — good fallback
-            kb_results = search_vendor_kb(matched_keyword, vendor["community_url"])
-            vendor_kb_results.extend(kb_results)
+            
+            # Skip generic ?q= search for Renesas — their site is JS-rendered
+            # and those URLs don't actually work. renesas_kb.py handles Renesas.
+            if vendor_key != "renesas":
+                kb_results = search_vendor_kb(original_query.strip(), vendor["community_url"])
+                vendor_kb_results.extend(kb_results)
+                kb_results = search_vendor_kb(matched_keyword, vendor["community_url"])
+                vendor_kb_results.extend(kb_results)
     
         if vendor_kb_results:
             print(f"  Got {len(vendor_kb_results)} vendor KB URLs", file=sys.stderr)
@@ -333,8 +320,22 @@ def search_all_sites(query):
 
     print(f"  Fetching answer content for top 3 results...", file=sys.stderr)
 
+# For Renesas queries, also search Renesas GitHub repos
+    if vendor_key == "renesas":
+        from renesas_kb import get_renesas_resources
+        renesas_results = get_renesas_resources(original_query)
+        all_results.extend(renesas_results)
+        print(f"  [Renesas] Added {len(renesas_results)} Renesas-specific results", file=sys.stderr)
     
+    # Reddit search
+    from reddit_fetch import search_reddit_for_vendor
+    print(f"  [Reddit] Searching...", file=sys.stderr)
+    reddit_results = search_reddit_for_vendor(original_query, vendor_key=vendor_key, max_results=3)
+    all_results.extend(reddit_results)
+    site_counts["reddit"] = len(reddit_results)
     for r in all_results[:3]:
+
+
         # Only fetch answers for Stack Exchange results — NOT GitHub issues
         if r.get("site") in ("stackoverflow", "electronics") and r.get("answered") and r.get("question_id"):
             answer = fetch_accepted_answer(r["question_id"], r["site"])
@@ -392,8 +393,62 @@ def search_all_vendor_families(vendor_key):
     
     return all_results
 
-if __name__ == "__main__":
+
+
+def generate_action_summary(query, results, vendor_tip):
+    """
+    Reads all results and generates a simple action plan.
+    This replaces opening 15 browser tabs — gives you ONE clear answer.
     
+    WHY THIS MATTERS FOR YOUR PRODUCT:
+    Developers don't want 15 links. They want to know what to do FIRST.
+    This is your product's killer feature — not just search, but synthesis.
+    """
+    se_results  = [r for r in results if r.get("site") in ("stackoverflow", "electronics") and r.get("answer_content")]
+    gh_results  = [r for r in results if r.get("site") == "github" and r.get("state") == "closed"]
+    rd_results  = [r for r in results if r.get("site") == "reddit" and r.get("answer_count", 0) > 3]
+
+    lines = []
+
+    # Best Stack Exchange answer
+    if se_results:
+        best = se_results[0]
+        ans = best["answer_content"]
+        label = "accepted" if ans["is_accepted"] else "top"
+        lines.append(f"  ✅ Best answer ({label}, score {ans['score']}) from {best['site']}:")
+        lines.append(f"     {ans['body'][:300].replace(chr(10), ' ')}...")
+        lines.append(f"     → {best['link']}")
+
+    # Closed GitHub issue = confirmed fix
+    if gh_results:
+        best_gh = gh_results[0]
+        lines.append(f"\n  🐛 Confirmed fix on GitHub ({best_gh['repo_label']}, now closed):")
+        lines.append(f"     {best_gh['title']}")
+        lines.append(f"     → {best_gh['link']}")
+
+    # Active Reddit discussion
+    if rd_results:
+        best_rd = rd_results[0]
+        lines.append(f"\n  💬 Active community discussion on r/{best_rd.get('subreddit','embedded')}:")
+        lines.append(f"     {best_rd['title']} (⬆{best_rd.get('upvotes',0)} upvotes, {best_rd.get('answer_count',0)} comments)")
+        lines.append(f"     → {best_rd['link']}")
+
+    # Vendor forum
+    if vendor_tip:
+        lines.append(f"\n  🏭 Also check official {vendor_tip['name']} forum:")
+        lines.append(f"     → {vendor_tip['url']}")
+
+    if not lines:
+        lines.append("  No strong matches found — try rephrasing or check vendor forum directly.")
+
+    lines.append(f"\n  📌 Start with the Stack Exchange answer, then check the GitHub issue if it persists.")
+
+    return "\n".join(lines)
+
+
+if __name__ == "__main__":
+    import time
+
     test_queries = [
         "Renesas RZG3/E camera interface",
         "STM32 I2C bus hanging",
@@ -401,68 +456,82 @@ if __name__ == "__main__":
         "MOSFET gate driver high side",
         "FreeRTOS task priority not working",
     ]
-    
+
     for query in test_queries:
         print("\n" + "═" * 65)
         print(f"  QUERY: {query}")
         print("═" * 65)
-        
+
         results, vendor_tip, site_counts = search_all_sites(query)
-        
-        # ── Summary line ──────────────────────────────────────────
+
         so_count  = site_counts.get("stackoverflow", 0)
         ee_count  = site_counts.get("electronics", 0)
         kb_count  = site_counts.get("vendor_kb", 0)
-        print(f"  Results → SO: {so_count}  |  EE Stack: {ee_count}  |  Vendor KB: {kb_count}")
-        
-        # ── Vendor tip ────────────────────────────────────────────
+        gh_count  = site_counts.get("github", 0)
+        rd_count  = site_counts.get("reddit", 0)
+
+        print(f"\n  📊 SUMMARY")
+        print(f"  SO: {so_count} | EE: {ee_count} | GitHub: {gh_count} | Reddit: {rd_count} | KB: {kb_count}")
         if vendor_tip:
-            print(f"  Vendor  → {vendor_tip['name']}")
-            print(f"  Forum   → {vendor_tip['url']}")
-        
-        print()
-        
-        # ── Stack Exchange results ────────────────────────────────
+            print(f"  🏭 Vendor: {vendor_tip['name']} → {vendor_tip['url']}")
+
+        # ── Stack Exchange ────────────────────────────────────────
         se_results = [r for r in results if r.get("site") in ("stackoverflow", "electronics")]
         if se_results:
-            print("  ── Stack Exchange ──────────────────────────────────────")
+            print(f"\n  ── Stack Overflow + EE Stack Exchange ({len(se_results)}) ──────────────")
             for i, r in enumerate(se_results, 1):
                 status = "✓" if r["answered"] else "✗"
                 site_label = "SO" if r["site"] == "stackoverflow" else "EE"
                 print(f"  {i}. [{site_label}] {status} (score:{r['score']:>3})  {r['title']}")
-                print(f"      {r['link']}")
+                print(f"      🔗 {r['link']}")
                 if r.get("answer_content"):
                     ans = r["answer_content"]
                     label = "Accepted" if ans["is_accepted"] else "Top ans"
-                    # Show just first 200 chars of answer as preview
                     preview = ans["body"][:200].replace("\n", " ")
                     print(f"      ↳ {label} (score:{ans['score']}): {preview}...")
                 print()
-        else:
-            print("  ── Stack Exchange ── No results found")
-            print()
-        
-        # ── Vendor KB results ─────────────────────────────────────
-        kb_results = [r for r in results if r.get("site") == "vendor_kb"]
-        if kb_results:
-            print("  ── Vendor KB ───────────────────────────────────────────")
-            for r in kb_results:
-                print(f"  → {r['title']}")
-                print(f"     {r['link']}")
-            print()
-        # ── GitHub results ────────────────────────────────────────
+
+        # ── GitHub ────────────────────────────────────────────────
         gh_results = [r for r in results if r.get("site") == "github"]
         if gh_results:
-            print("  ── GitHub Issues ───────────────────────────────────────")
+            print(f"  ── GitHub Issues ({len(gh_results)}) ────────────────────────────────────")
             for i, r in enumerate(gh_results, 1):
-                state = "✓" if r["state"] == "closed" else "○"
-                print(f"  {i}. {state} [{r['repo_label']}] (👍{r['reactions']} 💬{r['comments']})")
+                state = "✓ closed" if r.get("state") == "closed" else "○ open"
+                print(f"  {i}. [{r['repo_label']}] {state} 👍{r['reactions']} 💬{r['comments']}")
                 print(f"     {r['title']}")
-                print(f"     {r['link']}")
+                print(f"     🔗 {r['link']}")
                 if r.get("body_preview"):
                     preview = r["body_preview"][:150].replace("\n", " ")
                     print(f"     ↳ {preview}...")
                 print()
-        else:
-            print("  ── GitHub Issues ── No results found")
+
+        # ── Reddit ────────────────────────────────────────────────
+        rd_results = [r for r in results if r.get("site") == "reddit"]
+        if rd_results:
+            print(f"  ── Reddit ({len(rd_results)}) ─────────────────────────────────────────")
+            for i, r in enumerate(rd_results, 1):
+                has_comments = "✓" if r.get("answer_count", 0) > 0 else "○"
+                print(f"  {i}. [r/{r.get('subreddit','embedded')}] {has_comments} ⬆{r.get('upvotes',0)} 💬{r.get('answer_count',0)}")
+                print(f"     {r['title']}")
+                print(f"     🔗 {r['link']}")
+                if r.get("body_preview"):
+                    preview = r["body_preview"][:150].replace("\n", " ")
+                    print(f"     ↳ {preview}...")
+                print()
+
+        # ── Vendor KB ─────────────────────────────────────────────
+        kb_results = [r for r in results if r.get("site") == "vendor_kb"]
+        if kb_results:
+            print(f"  ── Vendor KB ({len(kb_results)}) ──────────────────────────────────────")
+            for r in kb_results:
+                print(f"  → {r['title']}")
+                print(f"     🔗 {r['link']}")
             print()
+
+        # ── AI SUMMARY ────────────────────────────────────────────
+        # This is the "one tab" feature — instead of opening 15 browser tabs,
+        # we synthesize all results into a single actionable recommendation
+        print(f"  ── 🤖 WHAT TO DO ─────────────────────────────────────────")
+        print(generate_action_summary(query, results, vendor_tip))
+        print()
+        time.sleep(1)
