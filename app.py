@@ -19,7 +19,7 @@ from flask_cors import CORS  # type: ignore[import]
 
 from fetch_stack import search_all_sites
 from github_fetch import search_github_issues
-
+import os
 app = Flask(__name__)
 CORS(app)
 
@@ -295,5 +295,6 @@ def search():
 
 
 if __name__ == "__main__":
-    print("embedmcp web demo running at http://localhost:5000")
-    app.run(debug=True, port=5000)
+    port = int(os.environ.get("PORT", 5000))
+    print(f"embedmcp web demo running at http://localhost:{port}")
+    app.run(host="0.0.0.0", port=port, debug=False)
