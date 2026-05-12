@@ -7,8 +7,7 @@ from mcp.server.models import InitializationOptions
 from mcp.server import NotificationOptions, Server
 from mcp.server.stdio import stdio_server
 from mcp import types
-from fetch_stack import search_all_sites   # synchronous function
-from formatter import format_debug_answer
+from fetch_stack import search_all_sites, format_console_output   # synchronous function
 
 app = Server("embedmcp")
 
@@ -33,9 +32,8 @@ def ensure_formatter_output():
 async def search_embedded_forums(query: str) -> str:
     """
     Search Stack Overflow, EE Stack Exchange, GitHub Issues, and Reddit
-    for embedded systems debugging help. Returns a structured 8-field
-    debug answer: root cause, confidence, consensus, first steps,
-    bad SDK versions, workarounds, register fixes, and errata.
+    for embedded systems debugging help. Returns a detailed console-style
+    output with sections for each site, summaries, and actionable recommendations.
     """
     # search_all_sites() is synchronous — run it in a thread so we
     # don't block the asyncio event loop while making HTTP requests.
@@ -44,7 +42,7 @@ async def search_embedded_forums(query: str) -> str:
         None, search_all_sites, query
     )
 
-    return format_debug_answer(
+    return format_console_output(
         query=query,
         results=results,
         vendor_tip=vendor_tip,

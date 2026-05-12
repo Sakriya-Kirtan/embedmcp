@@ -260,9 +260,10 @@ def clean(text):
     return text
 
 
-def search_all_sites(query):
+def search_all_sites(query, debug_list=None):
     """
     Searches both sites and fetches accepted answers for top results.
+    If debug_list is provided (list), appends debug messages to it instead of printing to stderr.
     """
     original_query = query          # keep original for Stack Exchange search
     cleaned_query = clean(query)  # normalized query for vendor detection
@@ -283,10 +284,10 @@ def search_all_sites(query):
     }
 
     all_results = so_results + ee_results + github_results + reddit_results
-    print(f"  Got {len(so_results)} SO results", file=sys.stderr)
-    print(f"  Got {len(ee_results)} EE results", file=sys.stderr)
-    print(f"  Got {len(github_results)} GitHub results", file=sys.stderr)
-    print(f"  Got {len(reddit_results)} Reddit results", file=sys.stderr)
+    _log(debug_list, f"  Got {len(so_results)} SO results")
+    _log(debug_list, f"  Got {len(ee_results)} EE results")
+    _log(debug_list, f"  Got {len(github_results)} GitHub results")
+    _log(debug_list, f"  Got {len(reddit_results)} Reddit results")
 
     all_results.sort(key=lambda x: x.get("score", 0), reverse=True)
 
@@ -316,7 +317,7 @@ def search_all_sites(query):
                 break
 
         if matched_keyword:
-            print(f"  Detected vendor keyword: '{matched_keyword}' → searching {vendor['name']} KB", file=sys.stderr)
+            _log(debug_list, f"  Detected vendor keyword: '{matched_keyword}' → searching {vendor['name']} KB")
 
             # Skip generic ?q= search for Renesas — their site is JS-rendered
             # and those URLs don't actually work. renesas_kb.py handles Renesas.
@@ -327,19 +328,19 @@ def search_all_sites(query):
                 vendor_kb_results.extend(kb_results)
 
         if vendor_kb_results:
-            print(f"  Got {len(vendor_kb_results)} vendor KB URLs", file=sys.stderr)
+            _log(debug_list, f"  Got {len(vendor_kb_results)} vendor KB URLs")
             all_results.extend(vendor_kb_results)
 
         site_counts["vendor_kb"] = len(vendor_kb_results)
 
-    print(f"  Fetching answer content for top 3 results...", file=sys.stderr)
+    _log(debug_list, f"  Fetching answer content for top 3 results...")
 
     # For Renesas queries, also search Renesas GitHub repos
     if vendor_key == "renesas":
         from renesas_kb import get_renesas_resources
         renesas_results = get_renesas_resources(original_query)
         all_results.extend(renesas_results)
-        print(f"  [Renesas] Added {len(renesas_results)} Renesas-specific results", file=sys.stderr)
+        _log(debug_list, f"  [Renesas] Added {len(renesas_results)} Renesas-specific results")
 
     for r in all_results[:3]:
         # Only fetch answers for Stack Exchange results — NOT GitHub issues
@@ -347,7 +348,7 @@ def search_all_sites(query):
             answer = fetch_accepted_answer(r["question_id"], r["site"])
             if answer:
                 r["answer_content"] = answer
-                print(f"  Got answer for: {r['title'][:50]}...", file=sys.stderr)
+                _log(debug_list, f"  Got answer for: {r['title'][:50]}...")
 
     # Vendor tip already detected above
     vendor_tip = None
@@ -363,6 +364,13 @@ def search_all_sites(query):
             fallback = build_vendor_fallback(vendor, query)
 
     return all_results, (fallback or vendor_tip), site_counts
+
+
+def _log(debug_list, message):
+    if debug_list is not None:
+        debug_list.append(message)
+    else:
+        print(message, file=sys.stderr)
 
 
 def search_all_vendor_families(vendor_key):
@@ -446,6 +454,89 @@ def generate_action_summary(query, results, vendor_tip):
         lines.append("  No strong matches found — try rephrasing or check vendor forum directly.")
 
     lines.append(f"\n   Start with the Stack Exchange answer, then check the GitHub issue if it persists.")
+
+    return "\n".join(lines)
+
+
+def format_console_output(query, results, vendor_tip, site_counts):
+    """
+    Formats the search results into the same console output as fetch_stack.py's __main__.
+    Returns a string ready for display.
+    """
+    lines = []
+
+    so_count  = site_counts.get("stackoverflow", 0)
+    ee_count  = site_counts.get("electronics", 0)
+    kb_count  = site_counts.get("vendor_kb", 0)
+    gh_count  = site_counts.get("github", 0)
+    rd_count  = site_counts.get("reddit", 0)
+
+    lines.append("\n" + "═" * 65)
+    lines.append(f"  QUERY: {query}")
+    lines.append("═" * 65)
+
+    lines.append(f"\n  📊 SUMMARY")
+    lines.append(f"  SO: {so_count} | EE: {ee_count} | GitHub: {gh_count} | Reddit: {rd_count} | KB: {kb_count}")
+    if vendor_tip:
+        lines.append(f"  🏭 Vendor: {vendor_tip['name']} → {vendor_tip['url']}")
+
+    # ── Stack Exchange ────────────────────────────────────────
+    se_results = [r for r in results if r.get("site") in ("stackoverflow", "electronics")]
+    if se_results:
+        lines.append(f"\n  ── Stack Overflow + EE Stack Exchange ({len(se_results)}) ──────────────")
+        for i, r in enumerate(se_results, 1):
+            status = "✓" if r["answered"] else "✗"
+            site_label = "SO" if r["site"] == "stackoverflow" else "EE"
+            lines.append(f"  {i}. [{site_label}] {status} (score:{r['score']:>3})  {r['title']}")
+            lines.append(f"      🔗 {r['link']}")
+            if r.get("answer_content"):
+                ans = r["answer_content"]
+                label = "Accepted" if ans["is_accepted"] else "Top ans"
+                preview = ans["body"][:200].replace("\n", " ")
+                lines.append(f"      ↳ {label} (score:{ans['score']}): {preview}...")
+            lines.append("")
+
+    # ── GitHub ────────────────────────────────────────────────
+    gh_results = [r for r in results if r.get("site") == "github"]
+    if gh_results:
+        lines.append(f"  ── GitHub Issues ({len(gh_results)}) ────────────────────────────────────")
+        for i, r in enumerate(gh_results, 1):
+            state = "✓ closed" if r.get("state") == "closed" else "○ open"
+            lines.append(f"  {i}. [{r['repo_label']}] {state} 👍{r['reactions']} 💬{r['comments']}")
+            lines.append(f"     {r['title']}")
+            lines.append(f"     🔗 {r['link']}")
+            if r.get("body_preview"):
+                preview = r["body_preview"][:150].replace("\n", " ")
+                lines.append(f"     ↳ {preview}...")
+            lines.append("")
+
+    # ── Reddit ────────────────────────────────────────────────
+    rd_results = [r for r in results if r.get("site") == "reddit"]
+    if rd_results:
+        lines.append(f"  ── Reddit ({len(rd_results)}) ─────────────────────────────────────────")
+        for i, r in enumerate(rd_results, 1):
+            has_comments = "✓" if r.get("answer_count", 0) > 0 else "○"
+            lines.append(f"  {i}. [r/{r.get('subreddit','embedded')}] {has_comments} ⬆{r.get('upvotes',0)} 💬{r.get('answer_count',0)}")
+            lines.append(f"     {r['title']}")
+            lines.append(f"     🔗 {r['link']}")
+            if r.get("body_preview"):
+                preview = r["body_preview"][:150].replace("\n", " ")
+                lines.append(f"     ↳ {preview}...")
+            lines.append("")
+
+    # ── Vendor KB ─────────────────────────────────────────────
+    kb_results = [r for r in results if r.get("site") == "vendor_kb"]
+    if kb_results:
+        lines.append(f"  ── Vendor KB ({len(kb_results)}) ──────────────────────────────────────")
+        for r in kb_results:
+            lines.append(f"  → {r['title']}")
+            lines.append(f"     🔗 {r['link']}")
+        lines.append("")
+
+    # ── AI SUMMARY ────────────────────────────────────────────
+    lines.append(f"  ── 🤖 WHAT TO DO ─────────────────────────────────────────")
+    lines.append(generate_action_summary(query, results, vendor_tip))
+    lines.append("")
 
     return "\n".join(lines)
 

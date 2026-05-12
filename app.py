@@ -15,13 +15,10 @@
 
 
 from flask import Flask, request, jsonify, render_template_string  # type: ignore[import]
-from flask_cors import CORS  # type: ignore[import]
 
-from fetch_stack import search_all_sites
-from github_fetch import search_github_issues
+from fetch_stack import search_all_sites, generate_action_summary
 import os
 app = Flask(__name__)
-CORS(app)
 
 # ── HTML template — inline so you only need one file ──────────
 # We're keeping this simple on purpose. Clean, fast, mobile-friendly.
@@ -89,7 +86,9 @@ HTML = """
   
   .kb-card { background: #1a1a14; border: 1px solid #2a2a1e; border-radius: 8px; padding: 12px 16px; margin-bottom: 8px; }
   .kb-card a { color: #ae9e5a; text-decoration: none; font-size: 13px; }
-  .kb-card a:hover { text-decoration: underline; }
+  .action-summary { font-size: 13px; color: #e0e0e0; line-height: 1.6; white-space: pre-line; }
+  .action-summary a { color: #4f8ef7; text-decoration: none; }
+  .action-summary a:hover { text-decoration: underline; }
 
   .loading { text-align: center; padding: 40px; color: #555; font-size: 14px; }
   .loading-dots::after { content: ''; animation: dots 1.5s infinite; }
@@ -115,19 +114,19 @@ HTML = """
 <div class="search-box">
   <div class="search-row">
     <input class="search-input" id="q" type="text" placeholder="e.g. STM32 I2C bus hanging, ESP32 WiFi drops..." autocomplete="off" />
-    <button class="search-btn" id="btn" onclick="doSearch()">Search</button>
+    <button class="search-btn" id="btn">Search</button>
   </div>
 </div>
 
 <div class="examples">
   <div class="examples-label">Try these</div>
   <div class="example-chips">
-    <span class="chip" onclick="setQuery('STM32 I2C bus hanging')">STM32 I2C bus hanging</span>
-    <span class="chip" onclick="setQuery('ESP32 WiFi drops connection')">ESP32 WiFi drops</span>
-    <span class="chip" onclick="setQuery('FreeRTOS task priority not working')">FreeRTOS priority</span>
-    <span class="chip" onclick="setQuery('MOSFET gate driver high side')">MOSFET gate driver</span>
-    <span class="chip" onclick="setQuery('RP2040 SPI DMA transfer')">RP2040 SPI DMA</span>
-    <span class="chip" onclick="setQuery('nRF52 BLE connection drops')">nRF52 BLE drops</span>
+    <span class="chip" data-query="STM32 I2C bus hanging">STM32 I2C bus hanging</span>
+    <span class="chip" data-query="ESP32 WiFi drops connection">ESP32 WiFi drops</span>
+    <span class="chip" data-query="FreeRTOS task priority not working">FreeRTOS priority</span>
+    <span class="chip" data-query="MOSFET gate driver high side">MOSFET gate driver</span>
+    <span class="chip" data-query="RP2040 SPI DMA transfer">RP2040 SPI DMA</span>
+    <span class="chip" data-query="nRF52 BLE connection drops">nRF52 BLE drops</span>
   </div>
 </div>
 
@@ -135,23 +134,18 @@ HTML = """
 
 <script>
 const input = document.getElementById('q');
-input.addEventListener('keydown', e => { if (e.key === 'Enter') doSearch(); });
+const btn = document.getElementById('btn');
+const chips = document.querySelectorAll('.chip');
 
-function setQuery(q) {
-  input.value = q;
-  doSearch();
-}
-
-async function doSearch() {
+window.doSearch = async function() {
   const q = input.value.trim();
   if (!q) return;
-  
-  const btn = document.getElementById('btn');
-  const results = document.getElementById('results');
+
   btn.disabled = true;
   btn.textContent = 'Searching...';
+  const results = document.getElementById('results');
   results.innerHTML = '<div class="loading">Searching Stack Overflow, EE Stack Exchange, GitHub<span class="loading-dots"></span></div>';
-  
+
   try {
     const res = await fetch('/search', {
       method: 'POST',
@@ -160,12 +154,30 @@ async function doSearch() {
     });
     const data = await res.json();
     renderResults(data, q);
-  } catch(e) {
+  } catch (e) {
     results.innerHTML = '<div class="error">Search failed — make sure the server is running.</div>';
   } finally {
     btn.disabled = false;
     btn.textContent = 'Search';
   }
+};
+
+window.setQuery = function(q) {
+  input.value = q;
+  window.doSearch();
+};
+
+input.addEventListener('keydown', e => { if (e.key === 'Enter') window.doSearch(); });
+btn.addEventListener('click', window.doSearch);
+
+chips.forEach(chip => {
+  chip.addEventListener('click', () => {
+    window.setQuery(chip.dataset.query);
+  });
+});
+
+function linkify(text) {
+  return text.replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>');
 }
 
 function renderResults(data, query) {
@@ -211,6 +223,22 @@ function renderResults(data, query) {
         Official community: <strong>${vendor_tip.name}</strong> — 
         <a class="vendor-tip-link" href="${vendor_tip.url}" target="_blank">${vendor_tip.url}</a>
       </span>
+    </div>`;
+  }
+
+  const bestSE = stack_results?.find(r => r.answer_content);
+  if (bestSE) {
+    const bestLabel = bestSE.site === 'stackoverflow' ? 'Stack Overflow' : 'EE Stack Exchange';
+    const bestClass = bestSE.site === 'stackoverflow' ? 'badge-so' : 'badge-ee';
+    html += '<div class="section-title">Best Stack Exchange Answer</div>';
+    html += `<div class="result-card">
+      <a href="${bestSE.link}" target="_blank">${bestSE.title}</a>
+      <div class="result-meta">
+        <span class="badge ${bestClass}">${bestLabel}</span>
+        <span class="badge ${bestSE.answered ? 'badge-answered' : 'badge-open'}">${bestSE.answered ? '✓ answered' : '○ open'}</span>
+        <span class="score">score: ${bestSE.score}</span>
+      </div>
+      <div class="answer-preview">${bestSE.answer_content.body.substring(0, 240).replace(/</g,'&lt;').replace(/>/g,'&gt;')}...</div>
     </div>`;
   }
   
@@ -278,6 +306,12 @@ function renderResults(data, query) {
     }
   }
   
+  // Action summary
+  if (data.action_summary) {
+    html += '<div class="section-title">🤖 WHAT TO DO</div>';
+    html += `<div class="action-summary">${linkify(data.action_summary).replace(/\\n/g, '<br>')}</div>`;
+  }
+  
   results.innerHTML = html;
 }
 </script>
@@ -301,6 +335,7 @@ def search():
         # search_all_sites already includes GitHub internally
         # DO NOT call search_github_issues separately — that was causing double search
         results, vendor_tip, site_counts = search_all_sites(query)
+        action_summary = generate_action_summary(query, results, vendor_tip)
         se_results  = [r for r in results if r.get("site") in ("stackoverflow", "electronics")]
         gh_results  = [r for r in results if r.get("site") == "github"]
         kb_results  = [r for r in results if r.get("site") == "vendor_kb"]
@@ -312,7 +347,8 @@ def search():
           "kb_results": kb_results,
           "reddit_results": rd_results,
           "vendor_tip": vendor_tip,
-          "counts": site_counts
+          "counts": site_counts,
+          "action_summary": action_summary
         })
     except Exception as e:
         print(f"Search error: {e}", file=__import__('sys').stderr)
