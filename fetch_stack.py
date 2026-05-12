@@ -134,6 +134,26 @@ def normalize_query(query):
     # remove weird separators
     query = re.sub(r'[/_-]', '', query)
     return query    
+
+def fetch_from_so(query):
+    data = fetch_stack_questions(query, site="stackoverflow")
+    return data["results"]
+
+
+def fetch_from_ee(query):
+    data = fetch_stack_questions(query, site="electronics")
+    return data["results"]
+
+
+def fetch_from_github(query, vendor_key=None, max_results=3):
+    return search_github_issues(query, vendor_key=vendor_key, max_results=max_results)
+
+
+def fetch_from_reddit(query, vendor_key=None, max_results=3):
+    from reddit_fetch import search_reddit_for_vendor
+    return search_reddit_for_vendor(query, vendor_key=vendor_key, max_results=max_results)
+
+
 def detect_vendor(query):
     query_lower = clean(query)
 
@@ -246,23 +266,29 @@ def search_all_sites(query):
     """
     original_query = query          # keep original for Stack Exchange search
     cleaned_query = clean(query)  # normalized query for vendor detection
-    all_results = []
-    site_counts = {}
 
     # Detect vendor first
     vendor_key, vendor = detect_vendor(cleaned_query)
-    
-    tag = None  # Don't use tag to avoid filtering too much
 
-    for site_key, site_info in STACK_SITES.items():
-        site = site_info["site"]
+    so_results = fetch_from_so(original_query)
+    ee_results = fetch_from_ee(original_query)
+    github_results = fetch_from_github(original_query, vendor_key=vendor_key, max_results=3)
+    reddit_results = fetch_from_reddit(original_query, vendor_key=vendor_key, max_results=3)
 
-        data = fetch_stack_questions(original_query, site=site, tag=tag)
-        all_results.extend(data["results"])   # 🔥 THIS WAS MISSING
-        site_counts[site] = len(data["results"])
+    site_counts = {
+        "SO": len(so_results),
+        "EE": len(ee_results),
+        "GitHub": len(github_results),
+        "Reddit": len(reddit_results),
+    }
 
-        print(f"  Got {len(data['results'])} results | quota left: {data['quota_remaining']}",file=sys.stderr)
-    all_results.sort(key=lambda x: x["score"], reverse=True)
+    all_results = so_results + ee_results + github_results + reddit_results
+    print(f"  Got {len(so_results)} SO results", file=sys.stderr)
+    print(f"  Got {len(ee_results)} EE results", file=sys.stderr)
+    print(f"  Got {len(github_results)} GitHub results", file=sys.stderr)
+    print(f"  Got {len(reddit_results)} Reddit results", file=sys.stderr)
+
+    all_results.sort(key=lambda x: x.get("score", 0), reverse=True)
 
     # Remove duplicate questions — same question_id means same question
     # appearing on both SO and EE Stack Exchange
@@ -277,7 +303,6 @@ def search_all_sites(query):
     all_results = deduped
 
     # Search vendor KB if vendor is detected
-
     vendor_kb_results = []
     if vendor and vendor.get("community_url"):
         matched_keyword = None
@@ -292,7 +317,7 @@ def search_all_sites(query):
 
         if matched_keyword:
             print(f"  Detected vendor keyword: '{matched_keyword}' → searching {vendor['name']} KB", file=sys.stderr)
-            
+
             # Skip generic ?q= search for Renesas — their site is JS-rendered
             # and those URLs don't actually work. renesas_kb.py handles Renesas.
             if vendor_key != "renesas":
@@ -300,42 +325,23 @@ def search_all_sites(query):
                 vendor_kb_results.extend(kb_results)
                 kb_results = search_vendor_kb(matched_keyword, vendor["community_url"])
                 vendor_kb_results.extend(kb_results)
-    
+
         if vendor_kb_results:
             print(f"  Got {len(vendor_kb_results)} vendor KB URLs", file=sys.stderr)
             all_results.extend(vendor_kb_results)
-    
+
         site_counts["vendor_kb"] = len(vendor_kb_results)
-    # Fetch actual answer content for top 3 results only
-    # WHY ONLY 3?
-    # Each answer fetch = 1 API call. 10 results × every query = quota burns fast.
-    # Top 3 by score are almost always the most useful anyway.
-    # Search GitHub Issues for the same query
-    # WHY HERE? After Stack Exchange so we have vendor_key already detected
-    print(f"  [GitHub] Searching issues...", file=sys.stderr)
-    github_results = search_github_issues(original_query, vendor_key=vendor_key, max_results=3)
-    all_results.extend(github_results)
-    site_counts["github"] = len(github_results)
-    print(f"  [GitHub] Got {len(github_results)} issues", file=sys.stderr)
 
     print(f"  Fetching answer content for top 3 results...", file=sys.stderr)
 
-# For Renesas queries, also search Renesas GitHub repos
+    # For Renesas queries, also search Renesas GitHub repos
     if vendor_key == "renesas":
         from renesas_kb import get_renesas_resources
         renesas_results = get_renesas_resources(original_query)
         all_results.extend(renesas_results)
         print(f"  [Renesas] Added {len(renesas_results)} Renesas-specific results", file=sys.stderr)
-    
-    # Reddit search
-    from reddit_fetch import search_reddit_for_vendor
-    print(f"  [Reddit] Searching...", file=sys.stderr)
-    reddit_results = search_reddit_for_vendor(original_query, vendor_key=vendor_key, max_results=3)
-    all_results.extend(reddit_results)
-    site_counts["reddit"] = len(reddit_results)
+
     for r in all_results[:3]:
-
-
         # Only fetch answers for Stack Exchange results — NOT GitHub issues
         if r.get("site") in ("stackoverflow", "electronics") and r.get("answered") and r.get("question_id"):
             answer = fetch_accepted_answer(r["question_id"], r["site"])
@@ -343,7 +349,6 @@ def search_all_sites(query):
                 r["answer_content"] = answer
                 print(f"  Got answer for: {r['title'][:50]}...", file=sys.stderr)
 
-    
     # Vendor tip already detected above
     vendor_tip = None
     fallback = None
@@ -357,7 +362,6 @@ def search_all_sites(query):
         if len(all_results) == 0:
             fallback = build_vendor_fallback(vendor, query)
 
-    
     return all_results, (fallback or vendor_tip), site_counts
 
 
@@ -435,13 +439,13 @@ def generate_action_summary(query, results, vendor_tip):
 
     # Vendor forum
     if vendor_tip:
-        lines.append(f"\n  🏭 Also check official {vendor_tip['name']} forum:")
+        lines.append(f"\n   Also check official {vendor_tip['name']} forum:")
         lines.append(f"     → {vendor_tip['url']}")
 
     if not lines:
         lines.append("  No strong matches found — try rephrasing or check vendor forum directly.")
 
-    lines.append(f"\n  📌 Start with the Stack Exchange answer, then check the GitHub issue if it persists.")
+    lines.append(f"\n   Start with the Stack Exchange answer, then check the GitHub issue if it persists.")
 
     return "\n".join(lines)
 

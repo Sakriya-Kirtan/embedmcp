@@ -183,7 +183,6 @@ Synthesized results
 - [ ] VS Code extension
 - [ ] API key system + Pro tier
 - [ ] Discourse forum for embedded devs
-- [ ] iStart Gujarat / Startup India application
 
 ---
 
