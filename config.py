@@ -38,7 +38,7 @@ EMBEDDED_TAGS = [
 
 RESULTS_PER_SITE = 5
 STACK_API_URL = "https://api.stackexchange.com/2.3"
-MIN_SCORE = 0
+MIN_SCORE = 2
 # Vendor-specific resources
 # We'll use these to route queries smartly —
 # e.g. "STM32 HAL bug" → also search ST's own community

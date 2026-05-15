@@ -172,6 +172,10 @@ def search_github_issues(query, vendor_key=None, max_results=5):
     # Sort by engagement score — most reactions + comments first
     all_issues.sort(key=lambda x: x["score"], reverse=True)
     
+    # Filter by relevance — slightly looser than Reddit (0.2 vs 0.25)
+    # because GitHub titles are more technical and may use abbreviations
+    all_issues = [i for i in all_issues if relevance_score(i.get('title',''), query) >= 0.2]
+    
     # Deduplicate by issue URL
     seen = set()
     deduped = []
@@ -182,6 +186,16 @@ def search_github_issues(query, vendor_key=None, max_results=5):
     
     return deduped[:max_results]
 
+
+def relevance_score(title, query):
+    query_words = set(re.sub(r'[^a-z0-9]', ' ', query.lower()).split())
+    title_words = set(re.sub(r'[^a-z0-9]', ' ', title.lower()).split())
+    stop = {'the','a','an','is','in','on','at','to','for','of','and','or','with','not','it','this','that'}
+    query_words -= stop
+    title_words -= stop
+    if not query_words:
+        return 0
+    return len(query_words & title_words) / len(query_words)
 
 def format_github_results(issues):
     """

@@ -1,0 +1,766 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>embedmcp — embedded systems search</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,400;0,500;1,400&family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,400;1,9..144,300&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:      #0c0c0b;
+    --surface: #141413;
+    --surface2:#1c1c1a;
+    --border:  #252523;
+    --border2: #2e2e2b;
+    --text:    #e2dfd6;
+    --text2:   #9e9b92;
+    --text3:   #5a5853;
+    --accent:  #d4a853;
+    --accent2: #a07838;
+    --green:   #5a9e6a;
+    --blue:    #5a7aae;
+    --purple:  #8a6aae;
+    --red:     #ae5a5a;
+  }
+
+  body {
+    font-family: 'DM Sans', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    font-size: 14px;
+  }
+
+  /* ── HEADER ── */
+  .header {
+    padding: 56px 24px 0;
+    text-align: center;
+    max-width: 720px;
+    margin: 0 auto;
+  }
+
+  .logo {
+    font-family: 'DM Mono', monospace;
+    font-size: 13px;
+    font-weight: 500;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 28px;
+  }
+
+  .headline {
+    font-family: 'Fraunces', serif;
+    font-size: clamp(28px, 5vw, 48px);
+    font-weight: 300;
+    font-style: italic;
+    line-height: 1.18;
+    color: var(--text);
+    margin-bottom: 20px;
+    letter-spacing: -0.5px;
+  }
+
+  .headline em {
+    font-style: normal;
+    color: var(--accent);
+    font-weight: 400;
+  }
+
+  .description {
+    font-size: 14px;
+    font-weight: 300;
+    color: var(--text2);
+    line-height: 1.8;
+    max-width: 520px;
+    margin: 0 auto 28px;
+  }
+
+  /* trust table */
+  .trust-table {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    max-width: 520px;
+    margin: 0 auto 40px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+    text-align: left;
+  }
+
+  .trust-cell {
+    padding: 9px 14px;
+    font-size: 12px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .trust-cell.last { border-bottom: none; }
+
+  .trust-cell.label {
+    font-family: 'DM Mono', monospace;
+    color: var(--accent);
+    border-right: 1px solid var(--border);
+    white-space: nowrap;
+    font-size: 11px;
+  }
+
+  .trust-cell.desc { color: var(--text2); }
+
+  .divider {
+    width: 40px;
+    height: 1px;
+    background: var(--border2);
+    margin: 0 auto 40px;
+  }
+
+  /* ── SEARCH ── */
+  .search-box {
+    max-width: 640px;
+    margin: 0 auto;
+    padding: 0 24px;
+  }
+
+  .search-row { display: flex; gap: 10px; }
+
+  .search-input {
+    flex: 1;
+    padding: 13px 16px;
+    font-size: 14px;
+    font-family: 'DM Sans', sans-serif;
+    background: var(--surface);
+    border: 1px solid var(--border2);
+    border-radius: 6px;
+    color: var(--text);
+    outline: none;
+    transition: border-color 0.15s;
+  }
+
+  .search-input:focus { border-color: var(--accent2); }
+  .search-input::placeholder { color: var(--text3); }
+
+  .search-btn {
+    padding: 13px 22px;
+    background: var(--accent);
+    color: #0c0c0b;
+    border: none;
+    border-radius: 6px;
+    font-family: 'DM Mono', monospace;
+    font-size: 12px;
+    font-weight: 500;
+    letter-spacing: 0.06em;
+    cursor: pointer;
+    transition: background 0.15s;
+    white-space: nowrap;
+  }
+
+  .search-btn:hover { background: var(--accent2); color: var(--text); }
+  .search-btn:disabled { background: var(--surface2); color: var(--text3); cursor: not-allowed; }
+
+  /* ── CHIPS ── */
+  .examples {
+    max-width: 640px;
+    margin: 16px auto 40px;
+    padding: 0 24px;
+  }
+
+  .examples-label {
+    font-size: 11px;
+    font-family: 'DM Mono', monospace;
+    color: var(--text3);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    margin-bottom: 10px;
+  }
+
+  .example-chips { display: flex; gap: 7px; flex-wrap: wrap; }
+
+  .chip {
+    font-size: 12px;
+    font-family: 'DM Mono', monospace;
+    padding: 5px 12px;
+    background: var(--surface);
+    border: 1px solid var(--border2);
+    border-radius: 4px;
+    color: var(--text2);
+    cursor: pointer;
+    transition: all 0.15s;
+    user-select: none;
+  }
+
+  .chip:hover { border-color: var(--accent2); color: var(--accent); }
+
+  /* ── RESULTS ── */
+  .results {
+    max-width: 640px;
+    margin: 0 auto;
+    padding: 0 24px 80px;
+  }
+
+  .results-header {
+    font-size: 12px;
+    font-family: 'DM Mono', monospace;
+    color: var(--text3);
+    margin-bottom: 20px;
+    padding-bottom: 14px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .results-header strong { color: var(--text2); }
+
+  .vendor-tip {
+    background: var(--surface);
+    border: 1px solid var(--border2);
+    border-left: 3px solid var(--accent);
+    border-radius: 6px;
+    padding: 12px 16px;
+    margin-bottom: 20px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .vendor-tip-text { font-size: 13px; color: var(--text2); }
+  .vendor-tip-link { color: var(--accent); text-decoration: none; }
+  .vendor-tip-link:hover { text-decoration: underline; }
+
+  .section-title {
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    font-weight: 500;
+    color: var(--text3);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    margin: 28px 0 10px;
+  }
+
+  .result-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 14px 16px;
+    margin-bottom: 8px;
+    transition: border-color 0.15s;
+  }
+
+  .result-card:hover { border-color: var(--border2); }
+
+  .result-card a {
+    color: var(--text);
+    text-decoration: none;
+    font-size: 13px;
+    font-weight: 500;
+    line-height: 1.45;
+    display: block;
+    margin-bottom: 8px;
+  }
+
+  .result-card a:hover { color: var(--accent); }
+
+  .result-meta { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+
+  .badge {
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    padding: 2px 7px;
+    border-radius: 3px;
+    font-weight: 500;
+    letter-spacing: 0.04em;
+  }
+
+  .badge-so      { background: #1a2a1a; color: var(--green); }
+  .badge-ee      { background: #1a1e2a; color: var(--blue); }
+  .badge-gh      { background: #221a2a; color: var(--purple); }
+  .badge-kb      { background: #2a261a; color: var(--accent); }
+  .badge-rd      { background: #1e1e2a; color: var(--blue); }
+  .badge-errata  { background: #2a1a26; color: var(--accent); }
+  .badge-answered{ background: #1a2a1a; color: var(--green); }
+  .badge-open    { background: #2a1a1a; color: var(--red); }
+
+  .score {
+    font-size: 11px;
+    color: var(--text3);
+    font-family: 'DM Mono', monospace;
+  }
+
+  .answer-preview {
+    font-size: 12.5px;
+    color: var(--text2);
+    margin-top: 10px;
+    line-height: 1.65;
+    border-left: 2px solid var(--border2);
+    padding-left: 10px;
+  }
+
+  .kb-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 11px 14px;
+    margin-bottom: 7px;
+  }
+
+  .kb-card a {
+    color: var(--accent);
+    text-decoration: none;
+    font-size: 13px;
+    font-family: 'DM Mono', monospace;
+  }
+
+  /* action box */
+  .action-box {
+    background: var(--surface);
+    border: 1px solid var(--border2);
+    border-left: 3px solid var(--accent);
+    border-radius: 6px;
+    padding: 20px;
+    margin-top: 4px;
+  }
+
+  .source-list {
+    background: var(--surface);
+    border: 1px solid var(--border2);
+    border-radius: 6px;
+    padding: 14px 16px;
+    margin: 12px 0 0;
+  }
+
+  .source-item {
+    font-size: 13px;
+    color: var(--text2);
+    margin-bottom: 10px;
+  }
+
+  .source-item:last-child { margin-bottom: 0; }
+
+  .source-label {
+    font-family: 'DM Mono', monospace;
+    color: var(--accent);
+    margin-right: 8px;
+  }
+
+  .action-section { margin-bottom: 16px; }
+  .action-section:last-child { margin-bottom: 0; }
+
+  .action-icon { font-size: 15px; margin-right: 6px; }
+
+  .action-label {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text);
+    margin-bottom: 4px;
+    display: flex;
+    align-items: center;
+  }
+
+  .action-body {
+    font-size: 13px;
+    color: var(--text2);
+    line-height: 1.7;
+    margin-left: 22px;
+  }
+
+  .action-link {
+    display: block;
+    font-family: 'DM Mono', monospace;
+    font-size: 11.5px;
+    color: var(--accent);
+    text-decoration: none;
+    margin-top: 4px;
+    margin-left: 22px;
+    word-break: break-all;
+  }
+
+  .action-link:hover { text-decoration: underline; }
+
+  .action-divider {
+    border: none;
+    border-top: 1px solid var(--border);
+    margin: 14px 0;
+  }
+
+  /* loading / error / empty */
+  .loading {
+    text-align: center;
+    padding: 48px;
+    color: var(--text3);
+    font-size: 13px;
+    font-family: 'DM Mono', monospace;
+  }
+
+  .loading-dots::after {
+    content: '';
+    animation: dots 1.5s infinite;
+  }
+
+  @keyframes dots {
+    0%,20% { content: '.'; }
+    40%     { content: '..'; }
+    60%,100%{ content: '...'; }
+  }
+
+  .error {
+    background: #1e1212;
+    border: 1px solid #3a1a1a;
+    border-radius: 6px;
+    padding: 16px;
+    color: var(--red);
+    font-size: 13px;
+    font-family: 'DM Mono', monospace;
+  }
+
+  .empty {
+    text-align: center;
+    padding: 48px;
+    color: var(--text3);
+    font-size: 13px;
+    font-family: 'DM Mono', monospace;
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="logo">embedmcp</div>
+
+  <h1 class="headline">
+    Search where embedded<br>
+    engineers actually go<br>
+    when they're <em>stuck</em>
+  </h1>
+
+  <p class="description">
+    When you ask an LLM about a HAL bug, it answers from training data
+    that may be two years old. When you Google it, you get SEO noise.
+    embedmcp pulls only from sources embedded engineers trust —
+    confirmed fixes, version-specific errata, community-voted answers.
+  </p>
+
+  <div class="trust-table">
+    <div class="trust-cell label">Stack Overflow</div>
+    <div class="trust-cell desc">Accepted answers, scored by engineers worldwide</div>
+    <div class="trust-cell label">EE Stack Exchange</div>
+    <div class="trust-cell desc">Peer-reviewed hardware &amp; firmware answers — not SEO</div>
+    <div class="trust-cell label">GitHub Issues</div>
+    <div class="trust-cell desc">HAL bug fixes with version tags, actual closed resolutions</div>
+    <div class="trust-cell label">ST Community</div>
+    <div class="trust-cell desc">Official ST responses, confirmed silicon errata workarounds</div>
+    <div class="trust-cell label">esp32.com · Espressif</div>
+    <div class="trust-cell desc">Official Espressif forum, IDF version-specific fixes</div>
+    <div class="trust-cell label last">r/stm32 · r/embedded · r/esp32</div>
+    <div class="trust-cell desc last">Recent real-world experience, version-specific gotchas</div>
+  </div>
+
+  <div class="divider"></div>
+</div>
+
+<div class="search-box">
+  <div class="search-row">
+    <input
+      class="search-input"
+      id="q"
+      type="text"
+      placeholder="e.g. STM32H7 DMA cache not working, ESP32 brownout reset WiFi..."
+      autocomplete="off"
+    />
+    <button class="search-btn" id="btn">Search</button>
+  </div>
+</div>
+
+<div class="examples">
+  <div class="examples-label">Real benchmark queries</div>
+  <div class="example-chips">
+    <span class="chip">STM32 HAL_BUSY stuck</span>
+    <span class="chip">STM32H7 DMA + cache</span>
+    <span class="chip">H743 I2C DMA stall</span>
+    <span class="chip">ADC DMA stops</span>
+    <span class="chip">ESP32 brownout WiFi</span>
+    <span class="chip">G431 I2C latch</span>
+  </div>
+</div>
+
+<div class="results" id="results"></div>
+
+<script>
+// ── query map: chip label → full search query ──────────────────
+const CHIP_QUERIES = {
+  'STM32 HAL_BUSY stuck':  'STM32 HAL I2C HAL_BUSY stuck never recovers',
+  'STM32H7 DMA + cache':   'STM32H7 DMA not working cache memory DTCM',
+  'H743 I2C DMA stall':    'STM32H743 I2C DMA intermittently stalls clock held low',
+  'ADC DMA stops':         'STM32 ADC DMA continuous mode stops after first transfer',
+  'ESP32 brownout WiFi':   'ESP32 brownout detector triggered WiFi init',
+  'G431 I2C latch':        'STM32G431 I2C slave latch endless interrupt HAL',
+};
+
+const input = document.getElementById('q');
+const btn   = document.getElementById('btn');
+
+// ── chip click ─────────────────────────────────────────────────
+document.querySelectorAll('.chip').forEach(function(chip) {
+  chip.addEventListener('click', function() {
+    var label = chip.textContent.trim();
+    var query = CHIP_QUERIES[label] || label;
+    input.value = query;
+    doSearch();
+  });
+});
+
+// ── search triggers ────────────────────────────────────────────
+btn.addEventListener('click', doSearch);
+input.addEventListener('keydown', function(e) {
+  if (e.key === 'Enter') doSearch();
+});
+
+// ── main search function ───────────────────────────────────────
+function doSearch() {
+  var q = input.value.trim();
+  if (!q) return;
+
+  btn.disabled = true;
+  btn.textContent = 'searching...';
+  document.getElementById('results').innerHTML =
+    '<div class="loading">searching Stack Overflow, EE Stack Exchange, GitHub<span class="loading-dots"></span></div>';
+
+  fetch('/search', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ query: q })
+  })
+  .then(function(res) { return res.json(); })
+  .then(function(data) { renderResults(data, q); })
+  .catch(function(e) {
+    document.getElementById('results').innerHTML =
+      '<div class="error">search failed — ' + e.message + '</div>';
+  })
+  .finally(function() {
+    btn.disabled = false;
+    btn.textContent = 'Search';
+  });
+}
+
+// ── helpers ────────────────────────────────────────────────────
+function esc(s) {
+  if (!s) return '';
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function linkify(text) {
+  if (!text) return '';
+  // plain regex, no escaping issues
+  return text.replace(/(https?:\/\/[^\s<]+)/g,
+    '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>');
+}
+
+// ── render ─────────────────────────────────────────────────────
+function renderResults(data, query) {
+  var el = document.getElementById('results');
+
+  if (data.error) {
+    el.innerHTML = '<div class="error">' + esc(data.error) + '</div>';
+    return;
+  }
+
+  var sr = data.stack_results  || [];
+  var gr = data.github_results || [];
+  var rr = data.reddit_results || [];
+  var kb = data.kb_results     || [];
+  var er = data.errata_results || [];
+  var vt = data.vendor_tip;
+  var ct = data.counts         || {};
+
+  var total = sr.length + gr.length + rr.length + kb.length + er.length;
+
+  if (total === 0 && !vt) {
+    el.innerHTML = '<div class="empty">no results — try different keywords.</div>';
+    return;
+  }
+
+  var html = '';
+
+  // header
+  html += '<div class="results-header">'
+    + '<strong>' + total + ' results</strong> for &ldquo;' + esc(query) + '&rdquo; &mdash; '
+    + 'SO: ' + (ct.stackoverflow || 0)
+    + ' &middot; EE: ' + (ct.electronics || 0)
+    + ' &middot; GitHub: ' + (ct.github || 0)
+    + ' &middot; Reddit: ' + (ct.reddit || 0)
+    + ' &middot; Errata: ' + (ct.errata || 0)
+    + ' &middot; KB: ' + (ct.vendor_kb || 0)
+    + '</div>';
+
+  // vendor tip
+  if (vt) {
+    html += '<div class="vendor-tip">'
+      + '<span>🏭</span>'
+      + '<span class="vendor-tip-text">Official community: <strong>' + esc(vt.name) + '</strong> &mdash; '
+      + '<a class="vendor-tip-link" href="' + esc(vt.url) + '" target="_blank">' + esc(vt.url) + '</a>'
+      + '</span></div>';
+  }
+
+  // action summary
+  if (data.action_summary) {
+    html += '<div class="section-title">🤖 What to do</div>'
+      + '<div class="action-box">'
+      + renderActionSummary(data.action_summary)
+      + '</div>';
+    html += renderSourceSummary(sr, gr, rr, er, kb);
+  }
+
+  // best SE answer
+  var bestSE = null;
+  for (var i = 0; i < sr.length; i++) {
+    if (sr[i].answer_content) { bestSE = sr[i]; break; }
+  }
+  if (bestSE) {
+    var bc = bestSE.site === 'stackoverflow' ? 'badge-so' : 'badge-ee';
+    var bl = bestSE.site === 'stackoverflow' ? 'Stack Overflow' : 'EE Stack Exchange';
+    html += '<div class="section-title">Best Stack Exchange Answer</div>'
+      + '<div class="result-card">'
+      + '<a href="' + esc(bestSE.link) + '" target="_blank">' + esc(bestSE.title) + '</a>'
+      + '<div class="result-meta">'
+      + '<span class="badge ' + bc + '">' + bl + '</span>'
+      + '<span class="badge ' + (bestSE.answered ? 'badge-answered' : 'badge-open') + '">'
+      + (bestSE.answered ? '✓ answered' : '○ open') + '</span>'
+      + '<span class="score">score: ' + bestSE.score + '</span>'
+      + '</div>'
+      + '<div class="answer-preview">' + esc(bestSE.answer_content.body.substring(0, 420)) + '...</div>'
+      + '</div>';
+  }
+
+  // all SE results
+  if (sr.length) {
+    html += '<div class="section-title">Stack Overflow + EE Stack Exchange</div>';
+    sr.forEach(function(r) {
+      var sc = r.site === 'stackoverflow' ? 'badge-so' : 'badge-ee';
+      var sl = r.site === 'stackoverflow' ? 'Stack Overflow' : 'EE Stack Exchange';
+      html += '<div class="result-card">'
+        + '<a href="' + esc(r.link) + '" target="_blank">' + esc(r.title) + '</a>'
+        + '<div class="result-meta">'
+        + '<span class="badge ' + sc + '">' + sl + '</span>'
+        + '<span class="badge ' + (r.answered ? 'badge-answered' : 'badge-open') + '">'
+        + (r.answered ? '✓ answered' : '○ open') + '</span>'
+        + '<span class="score">score: ' + r.score + '</span>'
+        + (r.tags && r.tags.length ? '<span class="score">' + r.tags.slice(0,3).join(', ') + '</span>' : '')
+        + '</div>'
+        + (r.answer_content
+            ? '<div class="answer-preview">' + esc(r.answer_content.body.substring(0, 360)) + '...</div>'
+            : '')
+        + '</div>';
+    });
+  }
+
+  // GitHub
+  if (gr.length) {
+    html += '<div class="section-title">GitHub Issues</div>';
+    gr.forEach(function(r) {
+      var sc = r.state === 'closed' ? 'badge-answered' : 'badge-open';
+      html += '<div class="result-card">'
+        + '<a href="' + esc(r.link) + '" target="_blank">' + esc(r.title) + '</a>'
+        + '<div class="result-meta">'
+        + '<span class="badge badge-gh">' + esc(r.repo_label) + '</span>'
+        + '<span class="badge ' + sc + '">' + (r.state === 'closed' ? '✓ closed' : '○ open') + '</span>'
+        + '<span class="score">👍 ' + r.reactions + ' · 💬 ' + r.comments + '</span>'
+        + '</div>'
+        + (r.body_preview
+            ? '<div class="answer-preview">' + esc(r.body_preview.substring(0, 500)) + '...</div>'
+            : '')
+        + '</div>';
+    });
+  }
+
+  // Reddit
+  if (rr.length) {
+    html += '<div class="section-title">Reddit</div>';
+    rr.forEach(function(r) {
+      html += '<div class="result-card">'
+        + '<a href="' + esc(r.link) + '" target="_blank">' + esc(r.title) + '</a>'
+        + '<div class="result-meta">'
+        + '<span class="badge badge-rd">r/' + esc(r.subreddit) + '</span>'
+        + '<span class="score">⬆ ' + r.upvotes + ' · 💬 ' + r.comments + '</span>'
+        + '</div>'
+        + (r.body_preview
+            ? '<div class="answer-preview">' + esc(r.body_preview.substring(0, 260)) + '...</div>'
+            : '')
+        + '</div>';
+    });
+  }
+
+  // Errata
+  if (er.length) {
+    html += '<div class="section-title">Vendor Errata</div>';
+    er.forEach(function(r) {
+      html += '<div class="result-card">'
+        + '<a href="' + esc(r.link) + '" target="_blank">' + esc(r.title) + '</a>'
+        + '<div class="result-meta">'
+        + '<span class="badge badge-errata">Errata</span>'
+        + '<span class="score">' + esc(r.chip || '') + '</span>'
+        + '</div>'
+        + (r.body_preview
+            ? '<div class="answer-preview">' + esc(r.body_preview.substring(0, 500)) + '...</div>'
+            : '')
+        + '</div>';
+    });
+  }
+
+  // Vendor KB
+  if (kb.length) {
+    html += '<div class="section-title">Vendor Knowledge Base</div>';
+    kb.forEach(function(r) {
+      html += '<div class="kb-card"><a href="' + esc(r.link) + '" target="_blank">🔗 ' + esc(r.title) + '</a></div>';
+    });
+  }
+
+  el.innerHTML = html;
+}
+
+// parse action_summary text into structured HTML blocks
+function renderActionSummary(text) {
+  if (!text) return '';
+  var sections = text.split(/\n──\s*\n/);
+  var out = '';
+  sections.forEach(function(section, idx) {
+    if (!section.trim()) return;
+    if (idx > 0) out += '<hr class="action-divider">';
+    // linkify URLs, then replace newlines with <br>
+    var processed = section
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/(https?:\/\/[^\s<]+)/g,
+        '<a class="action-link" href="$1" target="_blank" rel="noopener noreferrer">$1</a>')
+      .replace(/\n/g, '<br>');
+    out += '<div class="action-section" style="font-size:13.5px;color:var(--text2);line-height:1.8;">'
+      + processed + '</div>';
+  });
+  return out;
+}
+
+function renderSourceSummary(sr, gr, rr, er, kb) {
+  var items = [];
+  if (sr.length) items.push({label: 'Stack Exchange', link: sr[0].link, title: sr[0].title});
+  if (gr.length) items.push({label: 'GitHub', link: gr[0].link, title: gr[0].title});
+  if (rr.length) items.push({label: 'Reddit', link: rr[0].link, title: rr[0].title});
+  if (er.length) items.push({label: 'Errata', link: er[0].link, title: er[0].title});
+  if (kb.length) items.push({label: 'Vendor KB', link: kb[0].link, title: kb[0].title});
+  if (!items.length) return '';
+
+  var out = '<div class="section-title">Sources</div>'
+    + '<div class="result-card source-list">';
+  items.forEach(function(item) {
+    out += '<div class="source-item">'
+      + '<span class="source-label">' + esc(item.label) + '</span>'
+      + '<a href="' + esc(item.link) + '" target="_blank">' + esc(item.title) + '</a>'
+      + '</div>';
+  });
+  out += '</div>';
+  return out;
+}
+</script>
+</body>
+</html>
