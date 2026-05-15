@@ -14,314 +14,18 @@
 # This is your DEMO page — the link you'll post on Reddit.
 
 
-from flask import Flask, request, jsonify, render_template_string  # type: ignore[import]
-
-from fetch_stack import search_all_sites, generate_action_summary
+from flask import Flask, request, jsonify, render_template  # type: ignore[import]
+from dotenv import load_dotenv
 import os
+import sys
+
+load_dotenv(override=True)
+from fetch_stack import search_all_sites, generate_action_summary
 app = Flask(__name__)
-
-# ── HTML template — inline so you only need one file ──────────
-# We're keeping this simple on purpose. Clean, fast, mobile-friendly.
-# No React, no Tailwind, no build step. Just works.
-
-HTML = """
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>embedmcp — embedded systems search</title>
-<style>
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0f0f0f; color: #e0e0e0; min-height: 100vh; }
-  
-  .header { padding: 48px 24px 32px; text-align: center; border-bottom: 1px solid #222; }
-  .logo { font-size: 28px; font-weight: 600; color: #fff; letter-spacing: -0.5px; }
-  .logo span { color: #4f8ef7; }
-  .tagline { font-size: 14px; color: #888; margin-top: 8px; }
-  .sources { display: flex; gap: 8px; justify-content: center; margin-top: 16px; flex-wrap: wrap; }
-  .source-badge { font-size: 11px; padding: 3px 10px; border-radius: 20px; border: 1px solid #333; color: #999; }
-  
-  .search-box { max-width: 680px; margin: 40px auto; padding: 0 24px; }
-  .search-row { display: flex; gap: 10px; }
-  .search-input { flex: 1; padding: 12px 16px; font-size: 15px; background: #1a1a1a; border: 1px solid #333; border-radius: 8px; color: #e0e0e0; outline: none; transition: border-color 0.15s; }
-  .search-input:focus { border-color: #4f8ef7; }
-  .search-input::placeholder { color: #555; }
-  .search-btn { padding: 12px 24px; background: #4f8ef7; color: #fff; border: none; border-radius: 8px; font-size: 15px; font-weight: 500; cursor: pointer; white-space: nowrap; transition: background 0.15s; }
-  .search-btn:hover { background: #3a7de8; }
-  .search-btn:disabled { background: #333; color: #666; cursor: not-allowed; }
-  
-  .examples { max-width: 680px; margin: 0 auto 40px; padding: 0 24px; }
-  .examples-label { font-size: 12px; color: #666; margin-bottom: 10px; }
-  .example-chips { display: flex; gap: 8px; flex-wrap: wrap; }
-  .chip { font-size: 12px; padding: 5px 12px; background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 20px; color: #aaa; cursor: pointer; transition: all 0.15s; }
-  .chip:hover { border-color: #4f8ef7; color: #4f8ef7; }
-  
-  .results { max-width: 680px; margin: 0 auto; padding: 0 24px 60px; }
-  .results-header { font-size: 13px; color: #666; margin-bottom: 16px; padding-bottom: 12px; border-bottom: 1px solid #1a1a1a; }
-  .results-header strong { color: #aaa; }
-  
-  .vendor-tip { background: #1a1a2e; border: 1px solid #2a2a4a; border-radius: 8px; padding: 12px 16px; margin-bottom: 20px; display: flex; align-items: center; gap: 12px; }
-  .vendor-tip-icon { font-size: 18px; }
-  .vendor-tip-text { font-size: 13px; color: #aaa; }
-  .vendor-tip-link { color: #4f8ef7; text-decoration: none; }
-  .vendor-tip-link:hover { text-decoration: underline; }
-
-  .section-title { font-size: 11px; font-weight: 600; color: #555; letter-spacing: 0.08em; text-transform: uppercase; margin: 24px 0 12px; }
-
-  .result-card { background: #1a1a1a; border: 1px solid #252525; border-radius: 8px; padding: 14px 16px; margin-bottom: 10px; transition: border-color 0.15s; }
-  .result-card:hover { border-color: #333; }
-  .result-card a { color: #e0e0e0; text-decoration: none; font-size: 14px; font-weight: 500; line-height: 1.4; display: block; margin-bottom: 6px; }
-  .result-card a:hover { color: #4f8ef7; }
-  .result-meta { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
-  .badge { font-size: 11px; padding: 2px 8px; border-radius: 4px; font-weight: 500; }
-  .badge-so { background: #1e2a1e; color: #5a9e5a; }
-  .badge-ee { background: #1e1e2e; color: #5a7aae; }
-  .badge-gh { background: #2a1e2a; color: #9e7aae; }
-  .badge-kb { background: #2a2a1e; color: #ae9e5a; }
-  .badge-answered { background: #1e2a1e; color: #5a9e5a; }
-  .badge-open { background: #2a1e1e; color: #ae5a5a; }
-  .score { font-size: 11px; color: #666; }
-  .answer-preview { font-size: 12px; color: #777; margin-top: 8px; line-height: 1.5; border-left: 2px solid #2a2a2a; padding-left: 10px; }
-  
-  .kb-card { background: #1a1a14; border: 1px solid #2a2a1e; border-radius: 8px; padding: 12px 16px; margin-bottom: 8px; }
-  .kb-card a { color: #ae9e5a; text-decoration: none; font-size: 13px; }
-  .action-summary { font-size: 13px; color: #e0e0e0; line-height: 1.6; white-space: pre-line; }
-  .action-summary a { color: #4f8ef7; text-decoration: none; }
-  .action-summary a:hover { text-decoration: underline; }
-
-  .loading { text-align: center; padding: 40px; color: #555; font-size: 14px; }
-  .loading-dots::after { content: ''; animation: dots 1.5s infinite; }
-  @keyframes dots { 0%,20%{content:'.'} 40%{content:'..'} 60%,100%{content:'...'} }
-  
-  .error { background: #2a1a1a; border: 1px solid #4a2a2a; border-radius: 8px; padding: 16px; color: #ae5a5a; font-size: 14px; }
-  .empty { text-align: center; padding: 40px; color: #555; font-size: 14px; }
-</style>
-</head>
-<body>
-
-<div class="header">
-  <div class="logo">embed<span>mcp</span></div>
-  <div class="tagline">AI-powered search for embedded systems developers</div>
-  <div class="sources">
-    <span class="source-badge">Stack Overflow</span>
-    <span class="source-badge">EE Stack Exchange</span>
-    <span class="source-badge">GitHub Issues</span>
-    <span class="source-badge">Vendor Forums</span>
-  </div>
-</div>
-
-<div class="search-box">
-  <div class="search-row">
-    <input class="search-input" id="q" type="text" placeholder="e.g. STM32 I2C bus hanging, ESP32 WiFi drops..." autocomplete="off" />
-    <button class="search-btn" id="btn">Search</button>
-  </div>
-</div>
-
-<div class="examples">
-  <div class="examples-label">Try these</div>
-  <div class="example-chips">
-    <span class="chip" data-query="STM32 I2C bus hanging">STM32 I2C bus hanging</span>
-    <span class="chip" data-query="ESP32 WiFi drops connection">ESP32 WiFi drops</span>
-    <span class="chip" data-query="FreeRTOS task priority not working">FreeRTOS priority</span>
-    <span class="chip" data-query="MOSFET gate driver high side">MOSFET gate driver</span>
-    <span class="chip" data-query="RP2040 SPI DMA transfer">RP2040 SPI DMA</span>
-    <span class="chip" data-query="nRF52 BLE connection drops">nRF52 BLE drops</span>
-  </div>
-</div>
-
-<div class="results" id="results"></div>
-
-<script>
-const input = document.getElementById('q');
-const btn = document.getElementById('btn');
-const chips = document.querySelectorAll('.chip');
-
-window.doSearch = async function() {
-  const q = input.value.trim();
-  if (!q) return;
-
-  btn.disabled = true;
-  btn.textContent = 'Searching...';
-  const results = document.getElementById('results');
-  results.innerHTML = '<div class="loading">Searching Stack Overflow, EE Stack Exchange, GitHub<span class="loading-dots"></span></div>';
-
-  try {
-    const res = await fetch('/search', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ query: q })
-    });
-    const data = await res.json();
-    renderResults(data, q);
-  } catch (e) {
-    results.innerHTML = '<div class="error">Search failed — make sure the server is running.</div>';
-  } finally {
-    btn.disabled = false;
-    btn.textContent = 'Search';
-  }
-};
-
-window.setQuery = function(q) {
-  input.value = q;
-  window.doSearch();
-};
-
-input.addEventListener('keydown', e => { if (e.key === 'Enter') window.doSearch(); });
-btn.addEventListener('click', window.doSearch);
-
-chips.forEach(chip => {
-  chip.addEventListener('click', () => {
-    window.setQuery(chip.dataset.query);
-  });
-});
-
-function linkify(text) {
-  return text.replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>');
-}
-
-function renderResults(data, query) {
-  const results = document.getElementById('results');
-  
-  if (data.error) {
-    results.innerHTML = `<div class="error">${data.error}</div>`;
-    return;
-  }
-  
-  const { stack_results, github_results, reddit_results, vendor_tip, counts } = data;
-
-  const total =
-    (stack_results?.length || 0) +
-    (github_results?.length || 0) +
-    (reddit_results?.length || 0);
-
-
-  if (total === 0 && !vendor_tip) {
-    results.innerHTML = '<div class="empty">No results found — try different keywords.</div>';
-    return;
-  }
-  
-  let html = '';
-
-
-
-  
-  // Summary
-  html += `<div class="results-header">
-    <strong>${total} results</strong> for "${query}" —
-    SO: ${counts?.stackoverflow || 0}
-    · EE: ${counts?.electronics || 0}
-    · GitHub: ${counts?.github || 0}
-    · Reddit: ${counts?.reddit || 0}
-  </div>`;
-
-  // Vendor tip
-  if (vendor_tip) {
-    html += `<div class="vendor-tip">
-      <span class="vendor-tip-icon">🏭</span>
-      <span class="vendor-tip-text">
-        Official community: <strong>${vendor_tip.name}</strong> — 
-        <a class="vendor-tip-link" href="${vendor_tip.url}" target="_blank">${vendor_tip.url}</a>
-      </span>
-    </div>`;
-  }
-
-  const bestSE = stack_results?.find(r => r.answer_content);
-  if (bestSE) {
-    const bestLabel = bestSE.site === 'stackoverflow' ? 'Stack Overflow' : 'EE Stack Exchange';
-    const bestClass = bestSE.site === 'stackoverflow' ? 'badge-so' : 'badge-ee';
-    html += '<div class="section-title">Best Stack Exchange Answer</div>';
-    html += `<div class="result-card">
-      <a href="${bestSE.link}" target="_blank">${bestSE.title}</a>
-      <div class="result-meta">
-        <span class="badge ${bestClass}">${bestLabel}</span>
-        <span class="badge ${bestSE.answered ? 'badge-answered' : 'badge-open'}">${bestSE.answered ? '✓ answered' : '○ open'}</span>
-        <span class="score">score: ${bestSE.score}</span>
-      </div>
-      <div class="answer-preview">${bestSE.answer_content.body.substring(0, 240).replace(/</g,'&lt;').replace(/>/g,'&gt;')}...</div>
-    </div>`;
-  }
-  
-  // Stack Exchange results
-  if (stack_results?.length) {
-    html += '<div class="section-title">Stack Overflow + EE Stack Exchange</div>';
-    for (const r of stack_results) {
-      const siteClass = r.site === 'stackoverflow' ? 'badge-so' : 'badge-ee';
-      const siteLabel = r.site === 'stackoverflow' ? 'Stack Overflow' : 'EE Stack Exchange';
-      const statusClass = r.answered ? 'badge-answered' : 'badge-open';
-      const statusLabel = r.answered ? '✓ answered' : '○ open';
-      
-      html += `<div class="result-card">
-        <a href="${r.link}" target="_blank">${r.title}</a>
-        <div class="result-meta">
-          <span class="badge ${siteClass}">${siteLabel}</span>
-          <span class="badge ${statusClass}">${statusLabel}</span>
-          <span class="score">score: ${r.score}</span>
-          ${r.tags?.length ? `<span class="score">${r.tags.slice(0,3).join(', ')}</span>` : ''}
-        </div>
-        ${r.answer_content ? `<div class="answer-preview">${r.answer_content.body.substring(0, 300).replace(/</g,'&lt;').replace(/>/g,'&gt;')}...</div>` : ''}
-      </div>`;
-    }
-  }
-  
-  // GitHub results
-  if (github_results?.length) {
-    html += '<div class="section-title">GitHub Issues</div>';
-    for (const r of github_results) {
-      const statusClass = r.state === 'closed' ? 'badge-answered' : 'badge-open';
-      const statusLabel = r.state === 'closed' ? '✓ closed' : '○ open';
-      html += `<div class="result-card">
-        <a href="${r.link}" target="_blank">${r.title}</a>
-        <div class="result-meta">
-          <span class="badge badge-gh">${r.repo_label}</span>
-          <span class="badge ${statusClass}">${statusLabel}</span>
-          <span class="score">👍 ${r.reactions} · 💬 ${r.comments}</span>
-        </div>
-        ${r.body_preview ? `<div class="answer-preview">${r.body_preview.substring(0,300).replace(/</g,'&lt;').replace(/>/g,'&gt;')}...</div>` : ''}
-      </div>`;
-    }
-  }
-    // Reddit results
-  if (data.reddit_results?.length) {
-    html += '<div class="section-title">Reddit</div>';
-    for (const r of data.reddit_results) {
-      html += `<div class="result-card">
-        <a href="${r.link}" target="_blank">${r.title}</a>
-        <div class="result-meta">
-          <span class="badge badge-gh">r/${r.subreddit}</span>
-          <span class="score">⬆ ${r.upvotes} · 💬 ${r.comments}</span>
-        </div>
-        ${r.body_preview ? `<div class="answer-preview">${r.body_preview.substring(0,200)}...</div>` : ''}
-      </div>`;
-    }
-  }
-  
-  // Vendor KB links
-  //const kb_results = (stack_results || []).filter(r => r.site === 'vendor_kb');
-  const kb_results = data.kb_results || [];
-  if (kb_results.length) {
-    html += '<div class="section-title">Vendor Knowledge Base</div>';
-    for (const r of kb_results) {
-      html += `<div class="kb-card"><a href="${r.link}" target="_blank">🔗 ${r.title}</a></div>`;
-    }
-  }
-  
-  // Action summary
-  if (data.action_summary) {
-    html += '<div class="section-title">🤖 WHAT TO DO</div>';
-    html += `<div class="action-summary">${linkify(data.action_summary).replace(/\\n/g, '<br>')}</div>`;
-  }
-  
-  results.innerHTML = html;
-}
-</script>
-</body>
-</html>
-"""
 
 @app.route("/")
 def index():
-    return render_template_string(HTML)
+    return render_template("index.html")
 
 @app.route("/search", methods=["POST"])
 def search():
@@ -339,15 +43,24 @@ def search():
         se_results  = [r for r in results if r.get("site") in ("stackoverflow", "electronics")]
         gh_results  = [r for r in results if r.get("site") == "github"]
         kb_results  = [r for r in results if r.get("site") == "vendor_kb"]
-        rd_results  = [r for r in results if r.get("site") == "reddit"]
+        rr_results  = [r for r in results if r.get("site") == "reddit"]
+        er_results  = [r for r in results if r.get("site") == "errata"]
 
         return jsonify({
           "stack_results": se_results,
           "github_results": gh_results,
           "kb_results": kb_results,
-          "reddit_results": rd_results,
+          "reddit_results": rr_results,
+          "errata_results": er_results,
           "vendor_tip": vendor_tip,
-          "counts": site_counts,
+          "counts": {
+            "stackoverflow": site_counts.get("SO", 0),
+            "electronics":   site_counts.get("EE", 0),
+            "github":        site_counts.get("GitHub", 0),
+            "reddit":        site_counts.get("Reddit", 0),
+            "errata":        site_counts.get("Errata", 0),
+            "vendor_kb":     site_counts.get("vendor_kb", 0),
+          },
           "action_summary": action_summary
         })
     except Exception as e:
@@ -356,7 +69,28 @@ def search():
 
 
 
+DEPRECATED_GROQ_MODELS = {"llama3-70b-8192", "llama3-70b"}
+DEFAULT_GROQ_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct"
+
+
+def resolve_groq_model():
+    model = os.getenv("GROQ_MODEL", DEFAULT_GROQ_MODEL)
+    if model in DEPRECATED_GROQ_MODELS:
+        fallback = os.getenv("GROQ_MODEL_FALLBACK", DEFAULT_GROQ_MODEL)
+        if fallback != model:
+            print(
+                f"[Groq] WARNING: configured GROQ_MODEL {model} is deprecated and will be replaced by {fallback}",
+                file=sys.stderr,
+            )
+            model = fallback
+    return model
+
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
+    groq_url = os.getenv("GROQ_API_URL", "https://api.groq.com/openai/v1/chat/completions")
+    groq_model = resolve_groq_model()
+    groq_key = bool(os.getenv("GROQ_API_KEY") or os.getenv("GROG_API_KEY"))
     print(f"embedmcp web demo running at http://localhost:{port}")
+    print(f"Using Groq endpoint: {groq_url} model: {groq_model} key set: {groq_key}")
     app.run(host="0.0.0.0", port=port, debug=False)
