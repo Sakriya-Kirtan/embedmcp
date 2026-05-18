@@ -298,19 +298,23 @@ def generate_action_summary(query, results, vendor_tip):
         answer = _call_groq(system, user_prompt, max_tokens=600)
         if answer:
             return answer
-
-    # ── PATH 3: Debug query with NO community results ──────────────────────
-    if intent == 'debug' and not has_community_results:
+    # ── PATH 3: Debug query OR general query with NO community results ─────
+    if not has_community_results:
         system = (
-            "Senior embedded engineer. No community results found. "
-            "Answer from chip/HAL knowledge. Start with: "
-            "'⚠️ No live community results found — answering from training knowledge.' "
-            "Give numbered steps. Note if potentially outdated."
+            "Senior embedded engineer. No community results found for this query. "
+            "Answer from your training knowledge about embedded systems, Linux BSP, "
+            "device drivers, camera interfaces, and vendor SDKs. "
+            "Start with: '⚠️ No live community results — answering from training knowledge.' "
+            "Give numbered steps or practical guidance. Note if potentially outdated."
         )
 
         answer = _call_groq(system, query, max_tokens=500)
         if answer:
             return answer
+
+    # ── PATH 4: Debug query WITH community results but Groq unavailable ────
+    if intent == 'debug' and has_community_results:
+        pass  # falls through to mechanical summary below
 
     # ── Final fallback — Groq unavailable, nothing useful to show ────────
     SECTION_SEP = "\n── \n"
@@ -340,10 +344,10 @@ def generate_action_summary(query, results, vendor_tip):
                 f"  No results found. Set GROQ_API_KEY in .env for AI-powered answers.\n"
                 f"  Official forum: {vendor_tip['url']}"
             )
+        
         else:
             lines.append(
-                "  No results found. Set GROQ_API_KEY in .env for AI-powered answers.\n"
-                "  Try rephrasing with specific symptoms."
+                "  No community results found for this query.\n"
+                "  Try rephrasing with specific chip names or symptoms (e.g. 'hang', 'not working')."
             )
-
     return "\n".join(lines)
