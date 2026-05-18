@@ -229,9 +229,10 @@ def generate_action_summary(query, results, vendor_tip):
             "Prefer vendor KB or the official reference manual as the source and mention when the answer is taken from vendor KB. "
             "Be concise; no preamble or extra commentary."
         )
+        
         user_prompt = query
 
-        answer = _call_groq(system, user_prompt, max_tokens=400)
+        answer = _call_groq(system, user_prompt, max_tokens=1200)
 
         if answer:
             note = (
@@ -295,20 +296,21 @@ def generate_action_summary(query, results, vendor_tip):
             "What should the developer do? Numbered steps, most likely fix first."
         )
 
-        answer = _call_groq(system, user_prompt, max_tokens=600)
+        answer = _call_groq(system, user_prompt, max_tokens=1200)
         if answer:
             return answer
     # ── PATH 3: Debug query OR general query with NO community results ─────
     if not has_community_results:
         system = (
-            "Senior embedded engineer. No community results found for this query. "
-            "Answer from your training knowledge about embedded systems, Linux BSP, "
-            "device drivers, camera interfaces, and vendor SDKs. "
-            "Start with: '⚠️ No live community results — answering from training knowledge.' "
-            "Give numbered steps or practical guidance. Note if potentially outdated."
+            "You are a senior embedded Linux engineer specializing in Renesas RZ-family BSPs. "
+            "Give a specific, actionable answer. No marketing language. No generic overviews. "
+            "Include: exact kernel config options, device tree node examples, driver names, "
+            "known gotchas, and which BSP version introduced the feature if relevant. "
+            "Start with '⚠️ No live community results — answering from training knowledge.' "
+            "Use numbered steps. Be terse and technical."
         )
 
-        answer = _call_groq(system, query, max_tokens=500)
+        answer = _call_groq(system, query, max_tokens=1200)
         if answer:
             return answer
 
