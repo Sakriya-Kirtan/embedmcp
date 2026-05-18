@@ -9,6 +9,7 @@
 
 
 import os
+import re
 import requests as _requests
 
 
@@ -171,22 +172,21 @@ def _call_groq(system_prompt, user_prompt, max_tokens=600):
         return None
 
     # Support common chat completion response shapes.
+
+    # After parsing the response content, before returning:
     if isinstance(data, dict):
         if "choices" in data and data["choices"]:
             choice = data["choices"][0]
             if isinstance(choice.get("message"), dict):
-                return choice["message"].get("content")
-            return choice.get("text")
-        if "completion" in data:
-            return data["completion"]
-        if "output" in data:
-            output = data["output"]
-            if isinstance(output, list) and output:
-                first = output[0]
-                if isinstance(first, dict):
-                    return first.get("content") or first.get("text")
-                return first
-            return output
+                content = choice["message"].get("content")
+            else:
+                content = choice.get("text")
+            # Strip markdown formatting
+            if content:
+                content = content.replace("**", "").replace("__", "")
+                content = re.sub(r"#{1,6}\s", "", content)  # remove ### headers
+            return content
+    
     return None
 
 
@@ -235,11 +235,11 @@ def generate_action_summary(query, results, vendor_tip):
         answer = _call_groq(system, user_prompt, max_tokens=1200)
 
         if answer:
+            vendor_name = vendor_tip["name"] if vendor_tip else "the vendor"
             note = (
-                "\n\n---\n"
-                "_Note: This answer is from Groq's training knowledge of the datasheet. "
-                "Always verify pin assignments in ST CubeMX or the official reference manual "
-                "for your exact chip variant and package._"
+                f"\n\n---\n"
+                f"_Note: Answering from training knowledge. Always verify against "
+                f"the official {vendor_name} documentation and your specific chip revision._"
             )
             return answer + note
 
@@ -307,7 +307,10 @@ def generate_action_summary(query, results, vendor_tip):
             "Include: exact kernel config options, device tree node examples, driver names, "
             "known gotchas, and which BSP version introduced the feature if relevant. "
             "Start with '⚠️ No live community results — answering from training knowledge.' "
-            "Use numbered steps. Be terse and technical."
+            "NEVER invent function names, register names, or API calls — "
+            "if you don't know the exact name, describe what to look for in the datasheet instead. "
+            "Prefer device tree examples and Linux kernel driver references over bare-metal code. "
+            "Be terse and technical.Use numbered steps."
         )
 
         answer = _call_groq(system, query, max_tokens=1200)
